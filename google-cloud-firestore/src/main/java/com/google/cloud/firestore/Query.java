@@ -52,7 +52,6 @@ import com.google.protobuf.ByteString;
 import com.google.protobuf.Int32Value;
 import io.opencensus.trace.AttributeValue;
 import io.opencensus.trace.Tracing;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -76,12 +75,12 @@ public class Query {
     public final Object[] startAt;
     @Nullable public final Object[] endBefore;
 
-    public QueryPartition(Object[] startAt,  @Nullable Object[] endBefore) {
+    public QueryPartition(Object[] startAt, @Nullable Object[] endBefore) {
       this.startAt = startAt;
       this.endBefore = endBefore;
     }
   }
-  
+
   /** The direction of a sort. */
   public enum Direction {
     ASCENDING(StructuredQuery.Direction.ASCENDING),
@@ -389,7 +388,8 @@ public class Query {
         sanitizedValue = CustomClassMapper.serialize(fieldValue);
       }
 
-      Value encodedValue = converter.encodeValue(fieldPath, sanitizedValue, UserDataConverter.ARGUMENT);
+      Value encodedValue =
+          converter.encodeValue(fieldPath, sanitizedValue, UserDataConverter.ARGUMENT);
 
       if (encodedValue == null) {
         throw FirestoreException.invalidState(
@@ -1309,7 +1309,8 @@ public class Query {
     request.setPartitionCount(partitionCount);
     request.setStructuredQuery(buildQuery());
     request.setParent(options.getParentPath().toString());
-    FirestoreClient.PartitionQueryPagedResponse pagedResponse = firestore.getClient().partitionQuery(request.build());
+    FirestoreClient.PartitionQueryPagedResponse pagedResponse =
+        firestore.getClient().partitionQuery(request.build());
 
     @Nullable Object[] lastCursor = null;
 
@@ -1323,11 +1324,11 @@ public class Query {
       }
       lastCursor = decodedCursorValue;
     }
-    
+
     observer.onNext(new QueryPartition(lastCursor, null));
     observer.onCompleted();
   }
-  
+
   Comparator<QueryDocumentSnapshot> comparator() {
     return new Comparator<QueryDocumentSnapshot>() {
       @Override

@@ -22,7 +22,6 @@ import com.google.firestore.v1.ArrayValue;
 import com.google.firestore.v1.MapValue;
 import com.google.firestore.v1.Value;
 import com.google.protobuf.NullValue;
-
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -101,8 +100,7 @@ class UserDataConverter {
    * @return The Value proto.
    */
   @Nullable
-  Value encodeValue(
-      FieldPath path, @Nullable Object sanitizedObject, EncodingOptions options) {
+  Value encodeValue(FieldPath path, @Nullable Object sanitizedObject, EncodingOptions options) {
     if (sanitizedObject == FieldValue.DELETE_SENTINEL) {
       Preconditions.checkArgument(
           options.allowDelete(path), "FieldValue.delete() is not supported at field '%s'.", path);
@@ -209,7 +207,7 @@ class UserDataConverter {
         return new DocumentReference(firestore, ResourcePath.create(pathName));
       case GEO_POINT_VALUE:
         return new GeoPoint(
-                v.getGeoPointValue().getLatitude(), v.getGeoPointValue().getLongitude());
+            v.getGeoPointValue().getLatitude(), v.getGeoPointValue().getLongitude());
       case ARRAY_VALUE:
         List<Object> list = new ArrayList<>();
         List<Value> lv = v.getArrayValue().getValuesList();

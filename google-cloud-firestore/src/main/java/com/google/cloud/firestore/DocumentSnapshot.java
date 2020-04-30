@@ -22,11 +22,9 @@ import com.google.common.base.Preconditions;
 import com.google.firestore.v1.Document;
 import com.google.firestore.v1.Value;
 import com.google.firestore.v1.Write;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import javax.annotation.Nonnull;
@@ -88,10 +86,11 @@ public class DocumentSnapshot {
     Map<String, Value> fields = new HashMap<>();
     for (Map.Entry<String, Object> entry : values.entrySet()) {
       Value encodedValue =
-              new UserDataConverter(firestore).encodeValue(
-              FieldPath.of(entry.getKey()),
-              CustomClassMapper.convertToPlainJavaTypes(entry.getValue()),
-              options);
+          new UserDataConverter(firestore)
+              .encodeValue(
+                  FieldPath.of(entry.getKey()),
+                  CustomClassMapper.convertToPlainJavaTypes(entry.getValue()),
+                  options);
       if (encodedValue != null) {
         fields.put(entry.getKey(), encodedValue);
       }
@@ -114,8 +113,6 @@ public class DocumentSnapshot {
       FirestoreImpl firestore, DocumentReference documentReference, Timestamp readTime) {
     return new DocumentSnapshot(firestore, documentReference, null, readTime, null, null);
   }
-
-  
 
   /**
    * Returns the time at which this snapshot was read.
