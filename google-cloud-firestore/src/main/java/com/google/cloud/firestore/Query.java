@@ -32,11 +32,13 @@ import com.google.api.gax.rpc.ApiStreamObserver;
 import com.google.auto.value.AutoValue;
 import com.google.cloud.Timestamp;
 import com.google.cloud.firestore.Query.QueryOptions.Builder;
+import com.google.cloud.firestore.v1.FirestoreClient;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.firestore.v1.Cursor;
 import com.google.firestore.v1.Document;
+import com.google.firestore.v1.PartitionQueryRequest;
 import com.google.firestore.v1.RunQueryRequest;
 import com.google.firestore.v1.RunQueryResponse;
 import com.google.firestore.v1.StructuredQuery;
@@ -50,6 +52,7 @@ import com.google.protobuf.ByteString;
 import com.google.protobuf.Int32Value;
 import io.opencensus.trace.AttributeValue;
 import io.opencensus.trace.Tracing;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -66,8 +69,19 @@ import javax.annotation.Nullable;
 public class Query {
 
   final FirestoreImpl firestore;
+  final UserDataConverter converter;
   final QueryOptions options;
 
+  public static class QueryPartition {
+    public final Object[] startAt;
+    @Nullable public final Object[] endBefore;
+
+    public QueryPartition(Object[] startAt,  @Nullable Object[] endBefore) {
+      this.startAt = startAt;
+      this.endBefore = endBefore;
+    }
+  }
+  
   /** The direction of a sort. */
   public enum Direction {
     ASCENDING(StructuredQuery.Direction.ASCENDING),
@@ -84,7 +98,7 @@ public class Query {
     }
   }
 
-  abstract static class FieldFilter {
+  abstract class FieldFilter {
     final FieldPath fieldPath;
     final Object value;
 
@@ -96,7 +110,7 @@ public class Query {
     Value encodeValue() {
       Object sanitizedObject = CustomClassMapper.serialize(value);
       Value encodedValue =
-          UserDataConverter.encodeValue(fieldPath, sanitizedObject, UserDataConverter.ARGUMENT);
+          converter.encodeValue(fieldPath, sanitizedObject, UserDataConverter.ARGUMENT);
 
       if (encodedValue == null) {
         throw FirestoreException.invalidState("Cannot use Firestore Sentinels in FieldFilter");
@@ -109,7 +123,7 @@ public class Query {
     abstract Filter toProto();
   }
 
-  private static class UnaryFilter extends FieldFilter {
+  private class UnaryFilter extends FieldFilter {
     UnaryFilter(FieldPath fieldPath, Object value) {
       super(fieldPath, value);
       Preconditions.checkArgument(
@@ -136,7 +150,7 @@ public class Query {
     }
   }
 
-  private static class ComparisonFilter extends FieldFilter {
+  private class ComparisonFilter extends FieldFilter {
     final StructuredQuery.FieldFilter.Operator operator;
 
     ComparisonFilter(
@@ -281,6 +295,7 @@ public class Query {
   private Query(FirestoreImpl firestore, QueryOptions queryOptions) {
     this.firestore = firestore;
     this.options = queryOptions;
+    this.converter = new UserDataConverter(firestore);
   }
 
   /**
@@ -374,8 +389,7 @@ public class Query {
         sanitizedValue = CustomClassMapper.serialize(fieldValue);
       }
 
-      Value encodedValue =
-          UserDataConverter.encodeValue(fieldPath, sanitizedValue, UserDataConverter.ARGUMENT);
+      Value encodedValue = converter.encodeValue(fieldPath, sanitizedValue, UserDataConverter.ARGUMENT);
 
       if (encodedValue == null) {
         throw FirestoreException.invalidState(
@@ -1290,6 +1304,30 @@ public class Query {
     return result;
   }
 
+  public void getPartitions(long partitionCount, ApiStreamObserver<QueryPartition> observer) {
+    PartitionQueryRequest.Builder request = PartitionQueryRequest.newBuilder();
+    request.setPartitionCount(partitionCount);
+    request.setStructuredQuery(buildQuery());
+    request.setParent(options.getParentPath().toString());
+    FirestoreClient.PartitionQueryPagedResponse pagedResponse = firestore.getClient().partitionQuery(request.build());
+
+    @Nullable Object[] lastCursor = null;
+
+    for (Cursor cursor : pagedResponse.iterateAll()) {
+      Object[] decodedCursorValue = new Object[cursor.getValuesCount()];
+      for (int i = 0; i < cursor.getValuesCount(); ++i) {
+        decodedCursorValue[i] = converter.decodeValue(cursor.getValues(i));
+      }
+      if (lastCursor != null) {
+        observer.onNext(new QueryPartition(lastCursor, decodedCursorValue));
+      }
+      lastCursor = decodedCursorValue;
+    }
+    
+    observer.onNext(new QueryPartition(lastCursor, null));
+    observer.onCompleted();
+  }
+  
   Comparator<QueryDocumentSnapshot> comparator() {
     return new Comparator<QueryDocumentSnapshot>() {
       @Override

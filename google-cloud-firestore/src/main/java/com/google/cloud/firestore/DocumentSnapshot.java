@@ -52,6 +52,7 @@ public class DocumentSnapshot {
   @Nullable private final Timestamp readTime;
   @Nullable private final Timestamp updateTime;
   @Nullable private final Timestamp createTime;
+  private final UserDataConverter userDataConverter;
 
   protected DocumentSnapshot(
       FirestoreImpl firestore,
@@ -66,6 +67,7 @@ public class DocumentSnapshot {
     this.readTime = readTime;
     this.updateTime = updateTime;
     this.createTime = createTime;
+    this.userDataConverter = new UserDataConverter(firestore);
   }
 
   /**
@@ -86,7 +88,7 @@ public class DocumentSnapshot {
     Map<String, Value> fields = new HashMap<>();
     for (Map.Entry<String, Object> entry : values.entrySet()) {
       Value encodedValue =
-          UserDataConverter.encodeValue(
+              new UserDataConverter(firestore).encodeValue(
               FieldPath.of(entry.getKey()),
               CustomClassMapper.convertToPlainJavaTypes(entry.getValue()),
               options);
@@ -113,47 +115,7 @@ public class DocumentSnapshot {
     return new DocumentSnapshot(firestore, documentReference, null, readTime, null, null);
   }
 
-  private Object decodeValue(Value v) {
-    Value.ValueTypeCase typeCase = v.getValueTypeCase();
-    switch (typeCase) {
-      case NULL_VALUE:
-        return null;
-      case BOOLEAN_VALUE:
-        return v.getBooleanValue();
-      case INTEGER_VALUE:
-        return v.getIntegerValue();
-      case DOUBLE_VALUE:
-        return v.getDoubleValue();
-      case TIMESTAMP_VALUE:
-        return Timestamp.fromProto(v.getTimestampValue());
-      case STRING_VALUE:
-        return v.getStringValue();
-      case BYTES_VALUE:
-        return Blob.fromByteString(v.getBytesValue());
-      case REFERENCE_VALUE:
-        String pathName = v.getReferenceValue();
-        return new DocumentReference(firestore, ResourcePath.create(pathName));
-      case GEO_POINT_VALUE:
-        return new GeoPoint(
-            v.getGeoPointValue().getLatitude(), v.getGeoPointValue().getLongitude());
-      case ARRAY_VALUE:
-        List<Object> list = new ArrayList<>();
-        List<Value> lv = v.getArrayValue().getValuesList();
-        for (Value iv : lv) {
-          list.add(decodeValue(iv));
-        }
-        return list;
-      case MAP_VALUE:
-        Map<String, Object> outputMap = new HashMap<>();
-        Map<String, Value> inputMap = v.getMapValue().getFieldsMap();
-        for (Map.Entry<String, Value> entry : inputMap.entrySet()) {
-          outputMap.put(entry.getKey(), decodeValue(entry.getValue()));
-        }
-        return outputMap;
-      default:
-        throw FirestoreException.invalidState(String.format("Unknown Value Type: %s", typeCase));
-    }
-  }
+  
 
   /**
    * Returns the time at which this snapshot was read.
@@ -212,7 +174,7 @@ public class DocumentSnapshot {
 
     Map<String, Object> decodedFields = new HashMap<>();
     for (Map.Entry<String, Value> entry : fields.entrySet()) {
-      Object decodedValue = decodeValue(entry.getValue());
+      Object decodedValue = userDataConverter.decodeValue(entry.getValue());
       decodedValue = convertToDateIfNecessary(decodedValue);
       decodedFields.put(entry.getKey(), decodedValue);
     }
@@ -292,7 +254,7 @@ public class DocumentSnapshot {
       return null;
     }
 
-    Object decodedValue = decodeValue(value);
+    Object decodedValue = userDataConverter.decodeValue(value);
     return convertToDateIfNecessary(decodedValue);
   }
 

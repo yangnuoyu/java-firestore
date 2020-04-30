@@ -22,7 +22,10 @@ import com.google.firestore.v1.ArrayValue;
 import com.google.firestore.v1.MapValue;
 import com.google.firestore.v1.Value;
 import com.google.protobuf.NullValue;
+
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -30,6 +33,8 @@ import javax.annotation.Nullable;
 
 /** Converts user input into the Firestore Value representation. */
 class UserDataConverter {
+
+  private final FirestoreImpl firestore;
 
   /** Controls the behavior for field deletes. */
   interface EncodingOptions {
@@ -82,7 +87,9 @@ class UserDataConverter {
         }
       };
 
-  private UserDataConverter() {}
+  UserDataConverter(FirestoreImpl firestore) {
+    this.firestore = firestore;
+  }
 
   /**
    * Encodes a Java Object to a Firestore Value proto.
@@ -94,7 +101,7 @@ class UserDataConverter {
    * @return The Value proto.
    */
   @Nullable
-  static Value encodeValue(
+  Value encodeValue(
       FieldPath path, @Nullable Object sanitizedObject, EncodingOptions options) {
     if (sanitizedObject == FieldValue.DELETE_SENTINEL) {
       Preconditions.checkArgument(
@@ -178,5 +185,47 @@ class UserDataConverter {
     }
 
     throw FirestoreException.invalidState("Cannot convert %s to Firestore Value", sanitizedObject);
+  }
+
+  Object decodeValue(Value v) {
+    Value.ValueTypeCase typeCase = v.getValueTypeCase();
+    switch (typeCase) {
+      case NULL_VALUE:
+        return null;
+      case BOOLEAN_VALUE:
+        return v.getBooleanValue();
+      case INTEGER_VALUE:
+        return v.getIntegerValue();
+      case DOUBLE_VALUE:
+        return v.getDoubleValue();
+      case TIMESTAMP_VALUE:
+        return Timestamp.fromProto(v.getTimestampValue());
+      case STRING_VALUE:
+        return v.getStringValue();
+      case BYTES_VALUE:
+        return Blob.fromByteString(v.getBytesValue());
+      case REFERENCE_VALUE:
+        String pathName = v.getReferenceValue();
+        return new DocumentReference(firestore, ResourcePath.create(pathName));
+      case GEO_POINT_VALUE:
+        return new GeoPoint(
+                v.getGeoPointValue().getLatitude(), v.getGeoPointValue().getLongitude());
+      case ARRAY_VALUE:
+        List<Object> list = new ArrayList<>();
+        List<Value> lv = v.getArrayValue().getValuesList();
+        for (Value iv : lv) {
+          list.add(decodeValue(iv));
+        }
+        return list;
+      case MAP_VALUE:
+        Map<String, Object> outputMap = new HashMap<>();
+        Map<String, Value> inputMap = v.getMapValue().getFieldsMap();
+        for (Map.Entry<String, Value> entry : inputMap.entrySet()) {
+          outputMap.put(entry.getKey(), decodeValue(entry.getValue()));
+        }
+        return outputMap;
+      default:
+        throw FirestoreException.invalidState(String.format("Unknown Value Type: %s", typeCase));
+    }
   }
 }
