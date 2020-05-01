@@ -79,6 +79,10 @@ public class Query {
       this.startAt = startAt;
       this.endBefore = endBefore;
     }
+    
+    public Query createQuery() {
+      return this.query.startAt(startAt).endBefore(endBefore);
+    }
   }
 
   /** The direction of a sort. */
